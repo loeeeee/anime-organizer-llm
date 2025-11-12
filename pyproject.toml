@@ -1,0 +1,24 @@
+[project]
+name = "anime-organizer-llm"
+version = "0.1.0"
+description = "Use LLM to organize anime"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "tqdm>=4.66.0",
+]
+
+[project.scripts]
+anime-organizer = "anime_organizer_llm.cli:main"
+gather-tree = "anime_organizer_llm.cli:gather_tree_main"
+rebuild-tree = "anime_organizer_llm.cli:rebuild_tree_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.uv.sources]
+
