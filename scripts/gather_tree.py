@@ -6,6 +6,8 @@ Script to gather folder tree structure and save it to a JSON file.
 import argparse
 import json
 import logging
+import os
+import stat
 import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -72,22 +74,36 @@ def scan_directory(path: Path, visited: set[Path] = None) -> Union[FileNode, Dir
         visited = set()
     
     try:
-        # Handle symlinks: follow them to their target
+        # Handle symlinks: treat them as regular entries without following
         if path.is_symlink():
+            # Get the symlink name (use original path name, not resolved)
+            symlink_name = path.name
+            
+            # Check if symlink target appears to be a directory (without following)
             try:
-                target = path.resolve()
-                # Check for symlink cycles
-                if target in visited:
-                    logging.warning(f"Symlink cycle detected at {path}, skipping")
-                    return FileNode(name=target.name, type="file")
+                target = path.readlink()
+                # Resolve target relative to symlink's parent (but don't follow symlinks)
+                if os.path.isabs(str(target)):
+                    target_path = Path(target)
+                else:
+                    target_path = path.parent / target
                 
-                visited.add(target)
-                # Recursively scan the symlink target
-                return scan_directory(target, visited)
+                # Use lstat to check target without following symlinks
+                try:
+                    target_stat = target_path.lstat()
+                    if stat.S_ISDIR(target_stat.st_mode):
+                        # Symlink points to a directory - return as directory but don't scan contents
+                        return DirectoryNode(name=symlink_name, type="folder", children=[])
+                    else:
+                        # Symlink points to a file
+                        return FileNode(name=symlink_name, type="file")
+                except (OSError, RuntimeError):
+                    # Target doesn't exist or can't be accessed, treat as file
+                    return FileNode(name=symlink_name, type="file")
             except (OSError, RuntimeError) as e:
-                logging.warning(f"Could not resolve symlink {path}: {e}")
-                # Fall back to original path name if resolution fails
-                return FileNode(name=path.name, type="file")
+                logging.warning(f"Could not read symlink {path}: {e}")
+                # Fall back to treating as file
+                return FileNode(name=symlink_name, type="file")
         
         resolved_path = path.resolve()
         

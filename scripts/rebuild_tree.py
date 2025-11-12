@@ -115,7 +115,48 @@ def load_tree_from_json(json_path: Path) -> TreeStructure:
         raise ValueError("JSON root must be a folder node")
     
     root = dict_to_directory_node(root_data)
-    return TreeStructure(root=root)
+    tree = TreeStructure(root=root)
+    
+    # Validate for duplicate entries
+    logging.info("Validating tree structure for duplicate entries...")
+    validate_no_duplicates(tree.root)
+    logging.info("Tree structure validation passed")
+    
+    return tree
+
+
+def validate_no_duplicates(node: Union[FileNode, DirectoryNode], current_path: str = "") -> None:
+    """
+    Validate that there are no duplicate file/directory names in the same directory.
+    
+    Args:
+        node: Node to validate
+        current_path: Current path string for error messages
+        
+    Raises:
+        ValueError: If duplicate entries are found in the same directory
+    """
+    if isinstance(node, DirectoryNode):
+        dir_path = f"{current_path}/{node.name}" if current_path else node.name
+        seen_names: set[str] = set()
+        duplicates: list[str] = []
+        
+        for child in node.children:
+            if child.name in seen_names:
+                duplicates.append(f"{dir_path}/{child.name}")
+            seen_names.add(child.name)
+        
+        if duplicates:
+            raise ValueError(
+                f"Duplicate entries found in JSON at directory '{dir_path}': {duplicates[:5]}. "
+                f"This indicates a data quality issue in the source JSON file. "
+                f"Please regenerate the JSON file using gather_tree.py."
+            )
+        
+        # Recursively validate children
+        for child in node.children:
+            if isinstance(child, DirectoryNode):
+                validate_no_duplicates(child, dir_path)
 
 
 def count_all_nodes(node: Union[FileNode, DirectoryNode]) -> int:
@@ -151,7 +192,8 @@ def rebuild_directory(
     # Fail-fast: check if path already exists
     if dir_path.exists():
         raise FileExistsError(
-            f"Directory already exists at target path: {dir_path}"
+            f"Directory already exists at target path: {dir_path}. "
+            f"Cannot rebuild tree structure - target location contains existing paths."
         )
     
     # Create directory
@@ -169,8 +211,9 @@ def rebuild_directory(
         
         # Fail-fast: check if path already exists
         if child_path.exists():
+            node_type = "directory" if isinstance(child, DirectoryNode) else "file"
             raise FileExistsError(
-                f"Path already exists at target: {child_path}"
+                f"{node_type.capitalize()} already exists at target path: {child_path}"
             )
         
         if isinstance(child, DirectoryNode):
@@ -212,7 +255,8 @@ def rebuild_tree(tree: TreeStructure, target_path: Path) -> None:
     # Fail-fast: check if root directory already exists
     if root_path.exists():
         raise FileExistsError(
-            f"Root directory already exists at target: {root_path}"
+            f"Root directory already exists at target path: {root_path}. "
+            f"Cannot rebuild tree structure - target location already contains the root directory."
         )
     
     logging.info(f"Rebuilding tree structure at: {root_path}")
