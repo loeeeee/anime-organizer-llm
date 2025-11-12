@@ -79,13 +79,14 @@ def scan_directory(path: Path, visited: set[Path] = None) -> Union[FileNode, Dir
                 # Check for symlink cycles
                 if target in visited:
                     logging.warning(f"Symlink cycle detected at {path}, skipping")
-                    return FileNode(name=path.name, type="file")
+                    return FileNode(name=target.name, type="file")
                 
                 visited.add(target)
                 # Recursively scan the symlink target
                 return scan_directory(target, visited)
             except (OSError, RuntimeError) as e:
                 logging.warning(f"Could not resolve symlink {path}: {e}")
+                # Fall back to original path name if resolution fails
                 return FileNode(name=path.name, type="file")
         
         resolved_path = path.resolve()
@@ -93,12 +94,12 @@ def scan_directory(path: Path, visited: set[Path] = None) -> Union[FileNode, Dir
         # Check for cycles (for non-symlink paths)
         if resolved_path in visited:
             logging.warning(f"Cycle detected at {path}, skipping")
-            return FileNode(name=path.name, type="file")
+            return FileNode(name=resolved_path.name, type="file")
         
         visited.add(resolved_path)
         
         if path.is_file():
-            return FileNode(name=path.name, type="file")
+            return FileNode(name=resolved_path.name, type="file")
         
         elif path.is_dir():
             children: List[Union[FileNode, DirectoryNode]] = []
@@ -120,11 +121,11 @@ def scan_directory(path: Path, visited: set[Path] = None) -> Union[FileNode, Dir
                 raise
             
             visited.discard(resolved_path)
-            return DirectoryNode(name=path.name, type="folder", children=children)
+            return DirectoryNode(name=resolved_path.name, type="folder", children=children)
         
         else:
             logging.warning(f"Unknown path type: {path}")
-            return FileNode(name=path.name, type="file")
+            return FileNode(name=resolved_path.name, type="file")
     
     except (OSError, PermissionError) as e:
         logging.error(f"Error accessing {path}: {e}")
